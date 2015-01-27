@@ -69,6 +69,14 @@ public class ServerApplication extends WebSocketApplication {
     }
 
     /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void onConnect(WebSocket socket) {
+        System.out.println("WS CONNECT: " + socket.toString());
+    }
+
+    /**
      * Callback triggered when {@link TelepathyWebSocket} receives a {@link java.awt.Frame}.
      *
      * @param webSocket {@link TelepathyWebSocket}
@@ -78,53 +86,104 @@ public class ServerApplication extends WebSocketApplication {
     @Override
     public void onMessage(WebSocket webSocket, String data) {
 
-        System.out.println(data);
+        if (!data.startsWith("0")) {
+            System.out.println(((TelepathyWebSocket) webSocket).getUID() + " -> " + data);
+        }
 
-        if (data.startsWith(TelepathyAPI.MESSAGE_LOGIN + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)) {
-            String incomingUID = extractUID(data);
-            login((TelepathyWebSocket) webSocket, incomingUID);
-
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)) {
-            String outgoingUID = extractUID(data);
-            if (!users.containsKey(outgoingUID)) {
-                webSocket.send(TelepathyAPI.MESSAGE_CONNECT_FAILED);
+        if (data.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
+            String desiredUID = extractMessageUID(data);
+            if (users.containsKey(desiredUID)) {
+                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
             } else {
-                forwardConnectionRequest(outgoingUID, (TelepathyWebSocket) webSocket);
+                login((TelepathyWebSocket) webSocket, desiredUID);
             }
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_ACCEPTED + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)) {
-            String outgoingUID = extractUID(data);
-            bindConnection(((TelepathyWebSocket) webSocket).getUID(), outgoingUID);
-            users.get(outgoingUID).send(TelepathyAPI.MESSAGE_CONNECT_ACCEPTED);
+        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT)) {
+            String targetUID = extractMessageUID(data);
+            if (!users.containsKey(targetUID)) {
+                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_CONNECT_FAILED);
+            } else {
+                forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
+            }
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_REJECTED + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)) {
-            String outgoingUID = extractUID(data);
-            users.get(outgoingUID).send(TelepathyAPI.MESSAGE_CONNECT_REJECTED);
+        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_ACCEPTED)) {
+            String targetUID = extractMessageUID(data);
+            bindConnection(((TelepathyWebSocket) webSocket).getUID(), targetUID);
+            send(targetUID, TelepathyAPI.MESSAGE_CONNECT_ACCEPTED);
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_DISCONNECT + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)) {
-            String outgoingUID = extractUID(data);
-            users.get(outgoingUID).send(TelepathyAPI.MESSAGE_DISCONNECT);
+        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_REJECTED)) {
+            String targetUID = extractMessageUID(data);
+            send(targetUID, TelepathyAPI.MESSAGE_CONNECT_REJECTED);
+
+        } else if (data.startsWith(TelepathyAPI.MESSAGE_DISCONNECT)) {
+            String uid = ((TelepathyWebSocket) webSocket).getUID();
+            String otherUID = connections.get(uid);
+            send(otherUID, TelepathyAPI.MESSAGE_DISCONNECT);
+            disbandConnection(uid, otherUID);
+
+        } else if (data.startsWith(TelepathyAPI.MESSAGE_LOGOUT)) {
+            logout((TelepathyWebSocket) webSocket);
 
         } else {
-            // Video stream frames, metadata or input data. Redirect to correct user based on connection pair bond.
+            // Video stream metadata or input commands. Redirect to correct user based on connection pair bond.
             users.get(connections.get(((TelepathyWebSocket) webSocket).getUID())).send(data);
-
         }
     }
 
     @Override
     public void onMessage(WebSocket webSocket, byte[] bytes) {
+        // Video stream frames. Redirect to correct user based on connection pair bond.
         users.get(connections.get(((TelepathyWebSocket) webSocket).getUID())).send(bytes);
-        super.onMessage(webSocket, bytes);
-
     }
 
-    private String extractUID(String message) {
+    /**
+     * Process user log in.
+     *
+     * @param webSocket {@link TelepathyWebSocket}
+     * @param uid       login {@link java.awt.Frame}
+     */
+    private void login(TelepathyWebSocket webSocket, String uid) {
+        logger.info("LOGIN ACCEPT: "+ uid);
+        // Set the user ID.
+        webSocket.setUID(uid);
+        users.put(uid, webSocket);
+    }
+
+    private void logout(TelepathyWebSocket webSocket) {
+        String uid = webSocket.getUID();
+
+        // Check if not already logged out...
+        if (uid != null){
+            logger.info("LOGOUT: " + uid);
+            users.remove(uid);
+
+            String otherUID = connections.get(uid);
+
+            // If socket closes unexpectedly and there is an active connection then disband it and inform the other end.
+            if (otherUID != null) {
+                users.get(otherUID).send(TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_OTHER_END_HUNG_UP_UNEXPECTEDLY);
+                disbandConnection(uid, otherUID);
+            }
+            webSocket.setUID(null);
+        }
+    }
+
+    private String extractMessageUID(String message) {
+        String stringAfterUIDDelimiter = message.split(TelepathyAPI.MESSAGE_UID_DELIMITER)[1];
+
+        // Is there a payload attached to this message? If yes, then the actual user name is contained before the payload delimiter.
+        if (stringAfterUIDDelimiter.split(TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER).length > 1) {
+            return stringAfterUIDDelimiter.split(TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)[0];
+        }
+        return stringAfterUIDDelimiter;
+    }
+
+    private String extractMessagePayload(String message) {
         return message.split(TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER)[1];
     }
 
     private void forwardConnectionRequest(String outgoingUID, TelepathyWebSocket webSocket) {
-        users.get(outgoingUID).send(TelepathyAPI.MESSAGE_CONNECT + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER + webSocket.getUID());
+        users.get(outgoingUID).send(TelepathyAPI.MESSAGE_CONNECT + webSocket.getUID());
     }
 
     private void bindConnection(String leftUID, String rightUID) {
@@ -137,90 +196,52 @@ public class ServerApplication extends WebSocketApplication {
         connections.remove(rightUID);
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void onConnect(WebSocket socket) {
-        System.out.println(socket.toString());
+
+    private void send(String uid, String message) {
+        TelepathyWebSocket webSocket = (TelepathyWebSocket) users.get(uid);
+
+        if (webSocket != null) {
+            webSocket.send(message);
+            System.out.println("SERVER -> " + webSocket.getUID() + " " + message);
+        }
+    }
+
+    private void send(TelepathyWebSocket webSocket, String message) {
+        webSocket.send(message);
+        System.out.println("SERVER -> " + webSocket.getUID() + " " + message);
     }
 
     /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void onClose(WebSocket websocket, DataFrame frame) {
-        users.remove(websocket);
-    }
-
-    /**
-     * Broadcasts a text message to all users.
+     * Broadcasts a system message to all users.
      *
      * @param text the text message
      */
     private void broadcast(String text) {
-        broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_CHAT + TelepathyAPI.MESSAGE_PAYLOAD_DELIMITER + text);
+        broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_BROADCAST + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
+        System.out.println("BROADCAST -> " + text);
     }
 
     /**
-     * Process user log in.
+     * Broadcasts an error message to all users.
      *
-     * @param webSocket {@link TelepathyWebSocket}
-     * @param uid       login {@link java.awt.Frame}
+     * @param text the text message
      */
-    private void login(TelepathyWebSocket webSocket, String uid) {
-        if (webSocket.getUID() == null) { // Is this user not registered yet?
-            logger.info("ServerApplication.login");
-            // Set the user ID.
-            webSocket.setUID(uid);
-            users.put(uid, webSocket);
-        }
+    private void broadcastError(String text) {
+        broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
+        System.out.println("BROADCAST ERROR -> " + text);
     }
 
-    private static String escape(String orig) {
-        StringBuilder buffer = new StringBuilder(orig.length());
+    @Override
+    public void onPing(WebSocket socket, byte[] bytes) {
+        super.onPing(socket, bytes);
+    }
 
-        for (int i = 0; i < orig.length(); i++) {
-            char c = orig.charAt(i);
-            switch (c) {
-                case '\b':
-                    buffer.append("\\b");
-                    break;
-                case '\f':
-                    buffer.append("\\f");
-                    break;
-                case '\n':
-                    buffer.append("<br />");
-                    break;
-                case '\r':
-                    // ignore
-                    break;
-                case '\t':
-                    buffer.append("\\t");
-                    break;
-                case '\'':
-                    buffer.append("\\'");
-                    break;
-                case '\"':
-                    buffer.append("\\\"");
-                    break;
-                case '\\':
-                    buffer.append("\\\\");
-                    break;
-                case '<':
-                    buffer.append("&lt;");
-                    break;
-                case '>':
-                    buffer.append("&gt;");
-                    break;
-                case '&':
-                    buffer.append("&amp;");
-                    break;
-                default:
-                    buffer.append(c);
-            }
-        }
-
-        return buffer.toString();
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void onClose(WebSocket webSocket, DataFrame frame) {
+        logout((TelepathyWebSocket) webSocket);
+        System.out.println("WS DISCONNECT: " + webSocket.toString());
     }
 }
