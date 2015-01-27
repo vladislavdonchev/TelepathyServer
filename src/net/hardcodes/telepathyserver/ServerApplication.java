@@ -86,7 +86,8 @@ public class ServerApplication extends WebSocketApplication {
     @Override
     public void onMessage(WebSocket webSocket, String data) {
 
-        if (!data.startsWith("0")) {
+        // We don't want to log the metadata for every frame...
+        if (!data.startsWith(TelepathyAPI.MESSAGE_VIDEO_METADATA)) {
             System.out.println(((TelepathyWebSocket) webSocket).getUID() + " -> " + data);
         }
 
