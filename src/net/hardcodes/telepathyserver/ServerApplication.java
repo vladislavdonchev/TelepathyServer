@@ -86,9 +86,16 @@ public class ServerApplication extends WebSocketApplication {
     @Override
     public void onMessage(WebSocket webSocket, String data) {
 
-        // We don't want to log the metadata for every frame...
-        if (!data.startsWith(TelepathyAPI.MESSAGE_VIDEO_METADATA)) {
+        // We don't want to log the metadata for every frame or any input commands...
+        if (!data.startsWith(TelepathyAPI.MESSAGE_VIDEO_METADATA) && !data.startsWith(TelepathyAPI.MESSAGE_INPUT)) {
             System.out.println(((TelepathyWebSocket) webSocket).getUID() + " -> " + data);
+        }
+
+        // Ignore messages from users that are not logged in and close their sockets in order to conserve resources.
+        // TODO: This should not happen!
+        if (!data.startsWith(TelepathyAPI.MESSAGE_LOGIN) && ((TelepathyWebSocket) webSocket).getUID() == null){
+            webSocket.close();
+            return;
         }
 
         if (data.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
