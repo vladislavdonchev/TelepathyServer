@@ -52,7 +52,7 @@ public class TelepathyWebSocketServer {
     public static void main(String[] args) throws Exception {
         final HttpServer server = HttpServer.createSimpleServer("", PORT);
         WebSocketAddOn webSocketAddOn = new WebSocketAddOn();
-        webSocketAddOn.setTimeoutInSeconds(20);
+        webSocketAddOn.setTimeoutInSeconds(15);
         // Register the WebSockets add on with the HttpServer.
         server.getListener("grizzly").registerAddOn(webSocketAddOn);
 

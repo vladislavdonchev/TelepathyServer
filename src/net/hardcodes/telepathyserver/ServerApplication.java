@@ -40,16 +40,14 @@
 
 package net.hardcodes.telepathyserver;
 
-import org.glassfish.grizzly.Grizzly;
 import org.glassfish.grizzly.http.HttpRequestPacket;
 import org.glassfish.grizzly.websockets.*;
 
+import java.util.Date;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
 
 public class ServerApplication extends WebSocketApplication {
 
-    private static final Logger logger = Grizzly.logger(ServerApplication.class);
     // Logged in users.
     private final ConcurrentHashMap<String, WebSocket> users = new ConcurrentHashMap<String, WebSocket>();
     // Connection pairs.
@@ -73,75 +71,81 @@ public class ServerApplication extends WebSocketApplication {
      */
     @Override
     public void onConnect(WebSocket socket) {
-        System.out.println("WS CONNECT: " + socket.toString());
+        logToTerminal("WS CONNECT : " + socket.toString());
     }
 
     /**
      * Callback triggered when {@link TelepathyWebSocket} receives a {@link java.awt.Frame}.
      *
      * @param webSocket {@link TelepathyWebSocket}
-     * @param data      {@link java.awt.Frame}
+     * @param message      {@link java.awt.Frame}
      * @throws java.io.IOException
      */
     @Override
-    public void onMessage(WebSocket webSocket, String data) {
+    public void onMessage(WebSocket webSocket, String message) {
 
         // We don't want to log the metadata for every frame or any input commands...
-        if (!data.startsWith(TelepathyAPI.MESSAGE_VIDEO_METADATA) && !data.startsWith(TelepathyAPI.MESSAGE_INPUT)) {
-            System.out.println(((TelepathyWebSocket) webSocket).getUID() + " -> " + data);
+        if (!message.startsWith(TelepathyAPI.MESSAGE_VIDEO_METADATA) && !message.startsWith(TelepathyAPI.MESSAGE_INPUT)) {
+            logToTerminal("MESSAGE (" + ((TelepathyWebSocket) webSocket).getUID() + ") -> " + message);
         }
 
         // Ignore messages from users that are not logged in and close their sockets in order to conserve resources.
         // TODO: This should not happen!
-        if (!data.startsWith(TelepathyAPI.MESSAGE_LOGIN) && ((TelepathyWebSocket) webSocket).getUID() == null){
+        if (!message.startsWith(TelepathyAPI.MESSAGE_LOGIN) && ((TelepathyWebSocket) webSocket).getUID() == null) {
             webSocket.close();
             return;
         }
 
-        if (data.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
-            String desiredUID = extractMessageUID(data);
+        if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
+            String desiredUID = extractMessageUID(message);
             if (users.containsKey(desiredUID)) {
-                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
-            } else {
-                login((TelepathyWebSocket) webSocket, desiredUID);
+                //send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
+                ((TelepathyWebSocket ) users.get(desiredUID)).setUID(null);
             }
+            login((TelepathyWebSocket) webSocket, desiredUID);
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT)) {
-            String targetUID = extractMessageUID(data);
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND)) {
+            String targetUID = extractMessageUID(message);
             if (!users.containsKey(targetUID)) {
-                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_CONNECT_FAILED);
+                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_BIND_FAILED);
             } else {
                 forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
             }
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_ACCEPTED)) {
-            String targetUID = extractMessageUID(data);
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND_ACCEPTED)) {
+            String targetUID = extractMessageUID(message);
             bindConnection(((TelepathyWebSocket) webSocket).getUID(), targetUID);
-            send(targetUID, TelepathyAPI.MESSAGE_CONNECT_ACCEPTED);
+            send(targetUID, TelepathyAPI.MESSAGE_BIND_ACCEPTED);
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_CONNECT_REJECTED)) {
-            String targetUID = extractMessageUID(data);
-            send(targetUID, TelepathyAPI.MESSAGE_CONNECT_REJECTED);
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND_REJECTED)) {
+            String targetUID = extractMessageUID(message);
+            send(targetUID, TelepathyAPI.MESSAGE_BIND_REJECTED);
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_DISCONNECT)) {
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_DISBAND)) {
             String uid = ((TelepathyWebSocket) webSocket).getUID();
             String otherUID = connections.get(uid);
-            send(otherUID, TelepathyAPI.MESSAGE_DISCONNECT);
+            send(otherUID, TelepathyAPI.MESSAGE_DISBAND);
             disbandConnection(uid, otherUID);
 
-        } else if (data.startsWith(TelepathyAPI.MESSAGE_LOGOUT)) {
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_LOGOUT)) {
             logout((TelepathyWebSocket) webSocket);
 
         } else {
             // Video stream metadata or input commands. Redirect to correct user based on connection pair bond.
-            users.get(connections.get(((TelepathyWebSocket) webSocket).getUID())).send(data);
+            WebSocket otherUser = users.get(connections.get(((TelepathyWebSocket) webSocket).getUID()));
+            if (otherUser != null && otherUser.isConnected()) {
+                otherUser.send(message);
+            }
         }
     }
 
     @Override
     public void onMessage(WebSocket webSocket, byte[] bytes) {
         // Video stream frames. Redirect to correct user based on connection pair bond.
-        users.get(connections.get(((TelepathyWebSocket) webSocket).getUID())).send(bytes);
+        WebSocket otherUser = users.get(connections.get(((TelepathyWebSocket) webSocket).getUID()));
+        if (otherUser != null && otherUser.isConnected()) {
+            otherUser.send(bytes);
+        }
     }
 
     /**
@@ -151,28 +155,32 @@ public class ServerApplication extends WebSocketApplication {
      * @param uid       login {@link java.awt.Frame}
      */
     private void login(TelepathyWebSocket webSocket, String uid) {
-        logger.info("LOGIN ACCEPT: "+ uid);
         // Set the user ID.
         webSocket.setUID(uid);
         users.put(uid, webSocket);
+        logToTerminal("LOGIN : " + uid);
     }
 
     private void logout(TelepathyWebSocket webSocket) {
         String uid = webSocket.getUID();
 
         // Check if not already logged out...
-        if (uid != null){
-            logger.info("LOGOUT: " + uid);
+        if (uid != null) {
             users.remove(uid);
+            logToTerminal("LOGOUT : " + uid);
 
             String otherUID = connections.get(uid);
 
             // If socket closes unexpectedly and there is an active connection then disband it and inform the other end.
             if (otherUID != null) {
-                users.get(otherUID).send(TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_OTHER_END_HUNG_UP_UNEXPECTEDLY);
+                send(otherUID, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_OTHER_END_HUNG_UP_UNEXPECTEDLY);
                 disbandConnection(uid, otherUID);
             }
             webSocket.setUID(null);
+
+            if (webSocket.isConnected()){
+                webSocket.close();
+            }
         }
     }
 
@@ -191,17 +199,19 @@ public class ServerApplication extends WebSocketApplication {
     }
 
     private void forwardConnectionRequest(String outgoingUID, TelepathyWebSocket webSocket) {
-        users.get(outgoingUID).send(TelepathyAPI.MESSAGE_CONNECT + webSocket.getUID());
+        send(outgoingUID, TelepathyAPI.MESSAGE_BIND + webSocket.getUID());
     }
 
     private void bindConnection(String leftUID, String rightUID) {
         connections.put(leftUID, rightUID);
         connections.put(rightUID, leftUID);
+        logToTerminal("BINDING CONNECTION : " + leftUID + " <-> " + rightUID);
     }
 
     private void disbandConnection(String leftUID, String rightUID) {
         connections.remove(leftUID);
         connections.remove(rightUID);
+        logToTerminal("DISBANDING CONNECTION : " + leftUID + " <-> " + rightUID);
     }
 
 
@@ -210,13 +220,12 @@ public class ServerApplication extends WebSocketApplication {
 
         if (webSocket != null) {
             webSocket.send(message);
-            System.out.println("SERVER -> " + webSocket.getUID() + " " + message);
         }
     }
 
     private void send(TelepathyWebSocket webSocket, String message) {
         webSocket.send(message);
-        System.out.println("SERVER -> " + webSocket.getUID() + " " + message);
+        logToTerminal("SERVER (" + webSocket.getUID() + ") -> " + message);
     }
 
     /**
@@ -226,7 +235,7 @@ public class ServerApplication extends WebSocketApplication {
      */
     private void broadcast(String text) {
         broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_BROADCAST + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
-        System.out.println("BROADCAST -> " + text);
+        logToTerminal("BROADCAST -> " + text);
     }
 
     /**
@@ -236,11 +245,12 @@ public class ServerApplication extends WebSocketApplication {
      */
     private void broadcastError(String text) {
         broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
-        System.out.println("BROADCAST ERROR -> " + text);
+        logToTerminal("BROADCAST ERROR -> " + text);
     }
 
     @Override
     public void onPing(WebSocket socket, byte[] bytes) {
+        logToTerminal("PING (" + ((TelepathyWebSocket) socket).getUID() + ") -> " + bytes.toString());
         super.onPing(socket, bytes);
     }
 
@@ -249,7 +259,20 @@ public class ServerApplication extends WebSocketApplication {
      */
     @Override
     public void onClose(WebSocket webSocket, DataFrame frame) {
-        logout((TelepathyWebSocket) webSocket);
-        System.out.println("WS DISCONNECT: " + webSocket.toString());
+        if (webSocket != null) {
+            if (frame != null) {
+                logToTerminal("WS DISCONNECT (" + ((TelepathyWebSocket) webSocket).getUID() + ") : " + webSocket.toString() + " -> " + frame.getTextPayload());
+            } else {
+                logToTerminal("WS DISCONNECT (" + ((TelepathyWebSocket) webSocket).getUID() + ") : " + webSocket.toString() + " -> DataFrame NULL");
+            }
+            logout((TelepathyWebSocket) webSocket);
+        } else {
+            logToTerminal("WS DISCONNECT NULL SOCKET ???");
+        }
+    }
+
+    private void logToTerminal(String message){
+        String date = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new Date());
+        System.out.println(date + "  " + message);
     }
 }
