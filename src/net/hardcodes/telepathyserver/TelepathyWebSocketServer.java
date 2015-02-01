@@ -41,9 +41,14 @@
 package net.hardcodes.telepathyserver;
 
 import org.glassfish.grizzly.http.server.HttpServer;
+import org.glassfish.grizzly.ssl.SSLContextConfigurator;
+import org.glassfish.grizzly.ssl.SSLEngineConfigurator;
 import org.glassfish.grizzly.websockets.WebSocketAddOn;
 import org.glassfish.grizzly.websockets.WebSocketApplication;
 import org.glassfish.grizzly.websockets.WebSocketEngine;
+
+import javax.net.ssl.SSLContext;
+import java.net.URL;
 
 public class TelepathyWebSocketServer {
 
@@ -53,7 +58,9 @@ public class TelepathyWebSocketServer {
         final HttpServer server = HttpServer.createSimpleServer("", PORT);
         WebSocketAddOn webSocketAddOn = new WebSocketAddOn();
         webSocketAddOn.setTimeoutInSeconds(15);
-        // Register the WebSockets add on with the HttpServer.
+        // Register the WebSockets add on with the HttpServer - TLS is temporarily disabled due to performance issues.
+        //server.getListener("grizzly").setSSLEngineConfig(createSslConfiguration());
+        //server.getListener("grizzly").setSecure(true);
         server.getListener("grizzly").registerAddOn(webSocketAddOn);
 
         final WebSocketApplication serverApplication = new ServerApplication();
@@ -68,5 +75,36 @@ public class TelepathyWebSocketServer {
         } finally {
             server.shutdownNow();
         }
+    }
+
+    /**
+     * Initialize server side SSL configuration.
+     *
+     * @return server side {@link SSLEngineConfigurator}.
+     */
+    private static SSLEngineConfigurator createSslConfiguration() {
+        // Initialize SSLContext configuration
+        SSLContextConfigurator sslContextConfig = new SSLContextConfigurator();
+        sslContextConfig.setSecurityProtocol("SSL");
+
+        ClassLoader cl = TelepathyWebSocketServer.class.getClassLoader();
+        // Set key store
+        URL keystoreUrl = cl.getResource("resources/test_512bit_keystore.jks");
+        if (keystoreUrl != null) {
+            sslContextConfig.setKeyStoreFile(keystoreUrl.getFile());
+            sslContextConfig.setKeyPass("BCFFAAB67DF49E37C9E3DAD16A0F1A6F0F2BB93981D88BAC97CD7E293932E043");
+            if (!sslContextConfig.validateConfiguration()){
+                System.out.println("TLS config is broken...");
+                return null;
+            }
+        } else {
+            System.out.println("Where is the keyStore file?");
+        }
+
+        // Create SSLEngine configurator
+        SSLEngineConfigurator sslEngineConfigurator = new SSLEngineConfigurator(sslContextConfig.createSSLContext(),
+                false, false, false);
+        sslEngineConfigurator.setClientMode(false);
+        return sslEngineConfigurator;
     }
 }

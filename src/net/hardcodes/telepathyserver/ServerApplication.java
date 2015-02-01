@@ -271,6 +271,12 @@ public class ServerApplication extends WebSocketApplication {
         }
     }
 
+    @Override
+    protected boolean onError(WebSocket webSocket, Throwable t) {
+        logToTerminal(t.toString() + " " + t.getMessage() + ": " + t.getCause());
+        return super.onError(webSocket, t);
+    }
+
     private void logToTerminal(String message){
         String date = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new Date());
         System.out.println(date + "  " + message);
