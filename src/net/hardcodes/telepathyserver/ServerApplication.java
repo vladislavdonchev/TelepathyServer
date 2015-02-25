@@ -124,17 +124,22 @@ public class ServerApplication extends WebSocketApplication {
         } else if (message.startsWith(TelepathyAPI.MESSAGE_DISBAND)) {
             String uid = ((TelepathyWebSocket) webSocket).getUID();
             String otherUID = connections.get(uid);
-            send(otherUID, TelepathyAPI.MESSAGE_DISBAND);
-            disbandConnection(uid, otherUID);
+            if (otherUID != null) {
+                send(otherUID, TelepathyAPI.MESSAGE_DISBAND);
+                disbandConnection(uid, otherUID);
+            }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_LOGOUT)) {
             logout((TelepathyWebSocket) webSocket);
 
         } else {
             // Video stream metadata or input commands. Redirect to correct user based on connection pair bond.
-            WebSocket otherUser = users.get(connections.get(((TelepathyWebSocket) webSocket).getUID()));
-            if (otherUser != null && otherUser.isConnected()) {
-                otherUser.send(message);
+            String otherUserID = connections.get(((TelepathyWebSocket) webSocket).getUID());
+            if (otherUserID != null) {
+                WebSocket otherUser = users.get(otherUserID);
+                if (otherUser != null && otherUser.isConnected()) {
+                    otherUser.send(message);
+                }
             }
         }
     }
@@ -142,9 +147,12 @@ public class ServerApplication extends WebSocketApplication {
     @Override
     public void onMessage(WebSocket webSocket, byte[] bytes) {
         // Video stream frames. Redirect to correct user based on connection pair bond.
-        WebSocket otherUser = users.get(connections.get(((TelepathyWebSocket) webSocket).getUID()));
-        if (otherUser != null && otherUser.isConnected()) {
-            otherUser.send(bytes);
+        String otherUserID = connections.get(((TelepathyWebSocket) webSocket).getUID());
+        if (otherUserID != null) {
+            WebSocket otherUser = users.get(otherUserID);
+            if (otherUser != null && otherUser.isConnected()) {
+                otherUser.send(bytes);
+            }
         }
     }
 
