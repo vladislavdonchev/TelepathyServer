@@ -50,6 +50,7 @@ import sun.misc.IOUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Scanner;
 
 public class TelepathyWebSocketServer {
 
@@ -81,12 +82,22 @@ public class TelepathyWebSocketServer {
 
         // Register the application.
         WebSocketEngine.getEngine().register("", "/tp", serverApplication);
+        Utils.startSystemMonitor();
 
         try {
             server.start();
-            System.out.println("Press any key to stop the server...");
-            System.in.read();
+            System.out.println();
+            System.out.println("Press enter to view system resource usage. Type 'exit' to stop the server.");
+            System.out.println(Utils.getResourcesInfo());
+            System.out.println();
+            Scanner in = new Scanner(System.in);
+            while (!in.nextLine().equals("exit")) {
+                System.out.println(Utils.getResourcesInfo());
+                System.out.println();
+            }
+
         } finally {
+            Utils.stopSystemMonitor();
             server.shutdownNow();
         }
     }
