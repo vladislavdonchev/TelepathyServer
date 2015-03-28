@@ -25,4 +25,5 @@ public final class TelepathyAPI {
     public static final int ERROR_USER_ID_TAKEN = 0x1;
     public static final int ERROR_OTHER_END_HUNG_UP_UNEXPECTEDLY = 0x2;
     public static final int ERROR_OTHER_USER_BUSY = 0x3;
+    public static final int ERROR_SERVER_OVERLOADED = 0x4;
 }

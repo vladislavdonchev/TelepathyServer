@@ -78,7 +78,7 @@ public class ServerApplication extends WebSocketApplication {
      * Callback triggered when {@link TelepathyWebSocket} receives a {@link java.awt.Frame}.
      *
      * @param webSocket {@link TelepathyWebSocket}
-     * @param message      {@link java.awt.Frame}
+     * @param message   {@link java.awt.Frame}
      * @throws java.io.IOException
      */
     @Override
@@ -97,19 +97,29 @@ public class ServerApplication extends WebSocketApplication {
         }
 
         if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
-            String desiredUID = extractMessageUID(message);
-            if (users.containsKey(desiredUID)) {
-                //send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
-                ((TelepathyWebSocket ) users.get(desiredUID)).setUID(null);
+            if (Utils.areThereResourcesLeft()) {
+                String desiredUID = extractMessageUID(message);
+                if (users.containsKey(desiredUID)) {
+                    //send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
+                    ((TelepathyWebSocket) users.get(desiredUID)).setUID(null);
+                }
+                login((TelepathyWebSocket) webSocket, desiredUID);
+            } else {
+                send(((TelepathyWebSocket) webSocket).getUID(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
             }
-            login((TelepathyWebSocket) webSocket, desiredUID);
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND)) {
-            String targetUID = extractMessageUID(message);
-            if (!users.containsKey(targetUID)) {
-                send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_BIND_FAILED);
+            if (Utils.areThereResourcesLeft()) {
+                String targetUID = extractMessageUID(message);
+                if (!users.containsKey(targetUID)) {
+                    send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_BIND_FAILED);
+                } else {
+                    forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
+                }
             } else {
-                forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
+                send(((TelepathyWebSocket) webSocket).getUID(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
             }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND_ACCEPTED)) {
@@ -186,7 +196,7 @@ public class ServerApplication extends WebSocketApplication {
             }
             webSocket.setUID(null);
 
-            if (webSocket.isConnected()){
+            if (webSocket.isConnected()) {
                 webSocket.close();
             }
         }
@@ -285,7 +295,7 @@ public class ServerApplication extends WebSocketApplication {
         return super.onError(webSocket, t);
     }
 
-    private void logToTerminal(String message){
+    private void logToTerminal(String message) {
         String date = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new Date());
         System.out.println(date + "  " + message);
     }
