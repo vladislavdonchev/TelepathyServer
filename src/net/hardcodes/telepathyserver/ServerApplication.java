@@ -40,21 +40,29 @@
 
 package net.hardcodes.telepathyserver;
 
+import com.google.gson.Gson;
 import org.glassfish.grizzly.http.HttpRequestPacket;
 import org.glassfish.grizzly.websockets.*;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ServerApplication extends WebSocketApplication {
 
+    // User profiles.
+    private ConcurrentHashMap<String, User> userProfiles = new ConcurrentHashMap<String, User>();
     // Logged in users.
-    private final ConcurrentHashMap<String, WebSocket> users = new ConcurrentHashMap<String, WebSocket>();
+    private final ConcurrentHashMap<String, WebSocket> activeUsers = new ConcurrentHashMap<String, WebSocket>();
     // Connection pairs.
-    private final ConcurrentHashMap<String, String> connections = new ConcurrentHashMap<String, String>();
+    private final ConcurrentHashMap<String, String> activeConnections = new ConcurrentHashMap<String, String>();
 
     // Initialize optimized broadcaster for system-wide messages.
     private final Broadcaster broadcaster = new OptimizedBroadcaster();
+
+    public ServerApplication() {
+        userProfiles = Utils.loadUserProfiles();
+    }
 
     /**
      * Creates a customized {@link org.glassfish.grizzly.websockets.WebSocket} implementation.
@@ -96,29 +104,49 @@ public class ServerApplication extends WebSocketApplication {
             return;
         }
 
+        if (message.startsWith(TelepathyAPI.MESSAGE_REGISTER)) {
+            if (Utils.areThereResourcesLeft()) {
+                String userProfileJson = extractMessagePayload(message);
+                User userProfile = new Gson().fromJson(userProfileJson, User.class);
+                if (userProfiles.contains(userProfile.getUserName())) {
+                    logToTerminal("REGISTER FAIL : " + userProfile.getUserName());
+                    send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
+                    webSocket.close();
+                } else {
+                    register(webSocket, userProfile);
+                }
+            } else {
+                send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                webSocket.close();
+                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
+            }
+
+        }
         if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
             if (Utils.areThereResourcesLeft()) {
-                String desiredUID = extractMessageUID(message);
-                if (users.containsKey(desiredUID)) {
-                    //send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
-                    ((TelepathyWebSocket) users.get(desiredUID)).setUID(null);
+                String uid = extractMessageUID(message);
+                String passHash = extractMessagePayload(message);
+                if (activeUsers.containsKey(uid)) {
+                    ((TelepathyWebSocket) activeUsers.get(uid)).setUID(null);
                 }
-                login((TelepathyWebSocket) webSocket, desiredUID);
+                login((TelepathyWebSocket) webSocket, uid, passHash);
             } else {
-                send(((TelepathyWebSocket) webSocket).getUID(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                webSocket.close();
                 System.out.println("WARNING!!! " + Utils.getResourcesInfo());
             }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND)) {
             if (Utils.areThereResourcesLeft()) {
                 String targetUID = extractMessageUID(message);
-                if (!users.containsKey(targetUID)) {
+                if (!activeUsers.containsKey(targetUID)) {
                     send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_BIND_FAILED);
                 } else {
                     forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
                 }
             } else {
-                send(((TelepathyWebSocket) webSocket).getUID(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
+                webSocket.close();
                 System.out.println("WARNING!!! " + Utils.getResourcesInfo());
             }
 
@@ -133,7 +161,7 @@ public class ServerApplication extends WebSocketApplication {
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_DISBAND)) {
             String uid = ((TelepathyWebSocket) webSocket).getUID();
-            String otherUID = connections.get(uid);
+            String otherUID = activeConnections.get(uid);
             if (otherUID != null) {
                 send(otherUID, TelepathyAPI.MESSAGE_DISBAND);
                 disbandConnection(uid, otherUID);
@@ -144,9 +172,9 @@ public class ServerApplication extends WebSocketApplication {
 
         } else {
             // Video stream metadata or input commands. Redirect to correct user based on connection pair bond.
-            String otherUserID = connections.get(((TelepathyWebSocket) webSocket).getUID());
+            String otherUserID = activeConnections.get(((TelepathyWebSocket) webSocket).getUID());
             if (otherUserID != null) {
-                WebSocket otherUser = users.get(otherUserID);
+                WebSocket otherUser = activeUsers.get(otherUserID);
                 if (otherUser != null && otherUser.isConnected()) {
                     otherUser.send(message);
                 }
@@ -157,13 +185,25 @@ public class ServerApplication extends WebSocketApplication {
     @Override
     public void onMessage(WebSocket webSocket, byte[] bytes) {
         // Video stream frames. Redirect to correct user based on connection pair bond.
-        String otherUserID = connections.get(((TelepathyWebSocket) webSocket).getUID());
+        String otherUserID = activeConnections.get(((TelepathyWebSocket) webSocket).getUID());
         if (otherUserID != null) {
-            WebSocket otherUser = users.get(otherUserID);
+            WebSocket otherUser = activeUsers.get(otherUserID);
             if (otherUser != null && otherUser.isConnected()) {
                 otherUser.send(bytes);
             }
         }
+    }
+
+    private void register(WebSocket webSocket, User newUser) {
+            logToTerminal("REGISTER SUCCESS : " + newUser.getUserName() + " " + newUser.getMailAddress());
+            newUser.setRegistrationTimestamp(new Date().getTime());
+
+            userProfiles.put(newUser.getUserName(), newUser);
+            Utils.saveUserProfiles(new ArrayList<User>(userProfiles.values()));
+            userProfiles = Utils.loadUserProfiles();
+
+            send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_REGISTRATION_SUCCESS);
+            login((TelepathyWebSocket) webSocket, newUser.getUserName(), newUser.getPasswordHash());
     }
 
     /**
@@ -172,11 +212,19 @@ public class ServerApplication extends WebSocketApplication {
      * @param webSocket {@link TelepathyWebSocket}
      * @param uid       login {@link java.awt.Frame}
      */
-    private void login(TelepathyWebSocket webSocket, String uid) {
-        // Set the user ID.
-        webSocket.setUID(uid);
-        users.put(uid, webSocket);
-        logToTerminal("LOGIN : " + uid);
+    private void login(TelepathyWebSocket webSocket, String uid, String passHash) {
+        if (userProfiles.get(uid) != null && userProfiles.get(uid).getPasswordHash().equals(passHash)) {
+            // Set the user ID.
+            webSocket.setUID(uid);
+            activeUsers.put(uid, webSocket);
+            userProfiles.get(uid).setLastLoginTimestamp(new Date().getTime());
+            Utils.saveUserProfiles(new ArrayList<User>(userProfiles.values()));
+            send(uid, TelepathyAPI.MESSAGE_LOGIN_SUCCESS);
+            logToTerminal("LOGIN : " + uid);
+        } else {
+            send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_AUTHENTICATION_FAILED);
+            webSocket.close();
+        }
     }
 
     private void logout(TelepathyWebSocket webSocket) {
@@ -184,10 +232,10 @@ public class ServerApplication extends WebSocketApplication {
 
         // Check if not already logged out...
         if (uid != null) {
-            users.remove(uid);
+            activeUsers.remove(uid);
             logToTerminal("LOGOUT : " + uid);
 
-            String otherUID = connections.get(uid);
+            String otherUID = activeConnections.get(uid);
 
             // If socket closes unexpectedly and there is an active connection then disband it and inform the other end.
             if (otherUID != null) {
@@ -221,20 +269,20 @@ public class ServerApplication extends WebSocketApplication {
     }
 
     private void bindConnection(String leftUID, String rightUID) {
-        connections.put(leftUID, rightUID);
-        connections.put(rightUID, leftUID);
+        activeConnections.put(leftUID, rightUID);
+        activeConnections.put(rightUID, leftUID);
         logToTerminal("BINDING CONNECTION : " + leftUID + " <-> " + rightUID);
     }
 
     private void disbandConnection(String leftUID, String rightUID) {
-        connections.remove(leftUID);
-        connections.remove(rightUID);
+        activeConnections.remove(leftUID);
+        activeConnections.remove(rightUID);
         logToTerminal("DISBANDING CONNECTION : " + leftUID + " <-> " + rightUID);
     }
 
 
     private void send(String uid, String message) {
-        TelepathyWebSocket webSocket = (TelepathyWebSocket) users.get(uid);
+        TelepathyWebSocket webSocket = (TelepathyWebSocket) activeUsers.get(uid);
 
         if (webSocket != null) {
             webSocket.send(message);
@@ -252,7 +300,7 @@ public class ServerApplication extends WebSocketApplication {
      * @param text the text message
      */
     private void broadcast(String text) {
-        broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_BROADCAST + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
+        broadcaster.broadcast(activeUsers.values(), TelepathyAPI.MESSAGE_BROADCAST + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
         logToTerminal("BROADCAST -> " + text);
     }
 
@@ -262,7 +310,7 @@ public class ServerApplication extends WebSocketApplication {
      * @param text the text message
      */
     private void broadcastError(String text) {
-        broadcaster.broadcast(users.values(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
+        broadcaster.broadcast(activeUsers.values(), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.MESSAGE_UID_DELIMITER + text);
         logToTerminal("BROADCAST ERROR -> " + text);
     }
 
