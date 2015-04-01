@@ -67,6 +67,9 @@ public class Utils {
     private static void saveFile(String filePath, String contents) {
         Charset utf8 = StandardCharsets.UTF_8;
         try {
+            if (Files.exists(Paths.get(filePath))) {
+                Files.delete(Paths.get(filePath));
+            }
             Files.write(Paths.get(filePath), contents.getBytes(utf8), StandardOpenOption.CREATE);
         } catch (IOException e) {
             e.printStackTrace();

@@ -99,7 +99,7 @@ public class ServerApplication extends WebSocketApplication {
 
         // Ignore messages from users that are not logged in and close their sockets in order to conserve resources.
         // TODO: This should not happen!
-        if (!message.startsWith(TelepathyAPI.MESSAGE_LOGIN) && ((TelepathyWebSocket) webSocket).getUID() == null) {
+        if (!message.startsWith(TelepathyAPI.MESSAGE_LOGIN) && !message.startsWith(TelepathyAPI.MESSAGE_REGISTER) && ((TelepathyWebSocket) webSocket).getUID() == null) {
             webSocket.close();
             return;
         }
@@ -108,10 +108,9 @@ public class ServerApplication extends WebSocketApplication {
             if (Utils.areThereResourcesLeft()) {
                 String userProfileJson = extractMessagePayload(message);
                 User userProfile = new Gson().fromJson(userProfileJson, User.class);
-                if (userProfiles.contains(userProfile.getUserName())) {
+                if (userProfiles.containsKey(userProfile.getUserName())) {
                     logToTerminal("REGISTER FAIL : " + userProfile.getUserName());
                     send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_ID_TAKEN);
-                    webSocket.close();
                 } else {
                     register(webSocket, userProfile);
                 }
@@ -121,8 +120,7 @@ public class ServerApplication extends WebSocketApplication {
                 System.out.println("WARNING!!! " + Utils.getResourcesInfo());
             }
 
-        }
-        if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
+        } else if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
             if (Utils.areThereResourcesLeft()) {
                 String uid = extractMessageUID(message);
                 String passHash = extractMessagePayload(message);
@@ -203,7 +201,6 @@ public class ServerApplication extends WebSocketApplication {
             userProfiles = Utils.loadUserProfiles();
 
             send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_REGISTRATION_SUCCESS);
-            login((TelepathyWebSocket) webSocket, newUser.getUserName(), newUser.getPasswordHash());
     }
 
     /**
