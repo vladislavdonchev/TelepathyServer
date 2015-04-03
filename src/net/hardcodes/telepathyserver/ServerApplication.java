@@ -220,7 +220,6 @@ public class ServerApplication extends WebSocketApplication {
             logToTerminal("LOGIN : " + uid);
         } else {
             send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_USER_AUTHENTICATION_FAILED);
-            webSocket.close();
         }
     }
 
@@ -240,10 +239,6 @@ public class ServerApplication extends WebSocketApplication {
                 disbandConnection(uid, otherUID);
             }
             webSocket.setUID(null);
-
-            if (webSocket.isConnected()) {
-                webSocket.close();
-            }
         }
     }
 
