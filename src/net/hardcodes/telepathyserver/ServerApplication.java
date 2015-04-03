@@ -230,6 +230,7 @@ public class ServerApplication extends WebSocketApplication {
         if (uid != null) {
             activeUsers.remove(uid);
             logToTerminal("LOGOUT : " + uid);
+            send(webSocket, TelepathyAPI.MESSAGE_LOGOUT_SUCCESS);
 
             String otherUID = activeConnections.get(uid);
 
@@ -276,14 +277,17 @@ public class ServerApplication extends WebSocketApplication {
     private void send(String uid, String message) {
         TelepathyWebSocket webSocket = (TelepathyWebSocket) activeUsers.get(uid);
 
-        if (webSocket != null) {
+        if (webSocket != null && webSocket.isConnected()) {
             webSocket.send(message);
+            logToTerminal("SERVER (" + uid + ") -> " + message);
         }
     }
 
     private void send(TelepathyWebSocket webSocket, String message) {
-        webSocket.send(message);
-        logToTerminal("SERVER (" + webSocket.getUID() + ") -> " + message);
+        if (webSocket != null && webSocket.isConnected()) {
+            webSocket.send(message);
+            logToTerminal("SERVER (" + webSocket.getUID() + ") -> " + message);
+        }
     }
 
     /**
