@@ -114,14 +114,14 @@ public class TelepathyWebSocketServer {
 
         // Set key store
         ClassLoader classLoader = TelepathyWebSocketServer.class.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("resources/test_512bit_keystore.jks");
+        InputStream inputStream = classLoader.getResourceAsStream("resources/hardcodes.jks");
         try {
             sslContextConfig.setKeyStoreBytes(IOUtils.readFully(inputStream, -1, true));
         } catch (IOException e) {
             System.out.println("Error reading keyStore file...");
             return null;
         }
-        sslContextConfig.setKeyPass("BCFFAAB67DF49E37C9E3DAD16A0F1A6F0F2BB93981D88BAC97CD7E293932E043");
+        sslContextConfig.setKeyPass("C927F8D7624213BF8128B434DE471F1EA8F0EB7DD4AD82364689E7CFA759422E");
         if (!sslContextConfig.validateConfiguration()) {
             System.out.println("TLS config is broken...");
             return null;

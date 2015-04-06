@@ -100,6 +100,7 @@ public class ServerApplication extends WebSocketApplication {
         // Ignore messages from users that are not logged in and close their sockets in order to conserve resources.
         // TODO: This should not happen!
         if (!message.startsWith(TelepathyAPI.MESSAGE_LOGIN) && !message.startsWith(TelepathyAPI.MESSAGE_REGISTER) && ((TelepathyWebSocket) webSocket).getUID() == null) {
+            logToTerminal("Killing unknown motherfucker " + webSocket);
             webSocket.close();
             return;
         }
@@ -138,9 +139,13 @@ public class ServerApplication extends WebSocketApplication {
             if (Utils.areThereResourcesLeft()) {
                 String targetUID = extractMessageUID(message);
                 if (!activeUsers.containsKey(targetUID)) {
-                    send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_BIND_FAILED);
+                    send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_BIND_FAILED);
                 } else {
-                    forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
+                    if (activeConnections.contains(targetUID)) {
+                        send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_OTHER_USER_BUSY);
+                    } else {
+                        forwardConnectionRequest(targetUID, (TelepathyWebSocket) webSocket);
+                    }
                 }
             } else {
                 send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
@@ -193,14 +198,14 @@ public class ServerApplication extends WebSocketApplication {
     }
 
     private void register(WebSocket webSocket, User newUser) {
-            logToTerminal("REGISTER SUCCESS : " + newUser.getUserName() + " " + newUser.getMailAddress());
-            newUser.setRegistrationTimestamp(new Date().getTime());
+        logToTerminal("REGISTER SUCCESS : " + newUser.getUserName() + " " + newUser.getMailAddress());
+        newUser.setRegistrationTimestamp(new Date().getTime());
 
-            userProfiles.put(newUser.getUserName(), newUser);
-            Utils.saveUserProfiles(new ArrayList<User>(userProfiles.values()));
-            userProfiles = Utils.loadUserProfiles();
+        userProfiles.put(newUser.getUserName(), newUser);
+        Utils.saveUserProfiles(new ArrayList<User>(userProfiles.values()));
+        userProfiles = Utils.loadUserProfiles();
 
-            send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_REGISTRATION_SUCCESS);
+        send((TelepathyWebSocket) webSocket, TelepathyAPI.MESSAGE_REGISTRATION_SUCCESS);
     }
 
     /**
@@ -276,11 +281,7 @@ public class ServerApplication extends WebSocketApplication {
 
     private void send(String uid, String message) {
         TelepathyWebSocket webSocket = (TelepathyWebSocket) activeUsers.get(uid);
-
-        if (webSocket != null && webSocket.isConnected()) {
-            webSocket.send(message);
-            logToTerminal("SERVER (" + uid + ") -> " + message);
-        }
+        send(webSocket, message);
     }
 
     private void send(TelepathyWebSocket webSocket, String message) {
