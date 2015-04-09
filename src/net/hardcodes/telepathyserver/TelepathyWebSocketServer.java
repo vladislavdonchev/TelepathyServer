@@ -78,7 +78,7 @@ public class TelepathyWebSocketServer {
         // if the '--secure' parameter has been provided.
         server.getListener("grizzly").registerAddOn(webSocketAddOn);
 
-        final WebSocketApplication serverApplication = new ServerApplication();
+        final ServerApplication serverApplication = new ServerApplication();
 
         // Register the application.
         WebSocketEngine.getEngine().register("", "/tp", serverApplication);
@@ -92,7 +92,7 @@ public class TelepathyWebSocketServer {
             System.out.println();
             Scanner in = new Scanner(System.in);
             while (!in.nextLine().equals("exit")) {
-                System.out.println(Utils.getResourcesInfo());
+                System.out.println(serverApplication.getUserInfo() + " | " + Utils.getResourcesInfo());
                 System.out.println();
             }
 

@@ -64,6 +64,10 @@ public class ServerApplication extends WebSocketApplication {
         userProfiles = Utils.loadUserProfiles();
     }
 
+    public String getUserInfo() {
+        return "USERS: " + activeUsers.size() + " | CONN: " + activeConnections.size() / 2;
+    }
+
     /**
      * Creates a customized {@link org.glassfish.grizzly.websockets.WebSocket} implementation.
      *
@@ -118,7 +122,7 @@ public class ServerApplication extends WebSocketApplication {
             } else {
                 send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
                 webSocket.close();
-                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
+                System.out.println("WARNING!!! " + getUserInfo() + " | " + Utils.getResourcesInfo());
             }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_LOGIN)) {
@@ -132,7 +136,7 @@ public class ServerApplication extends WebSocketApplication {
             } else {
                 send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
                 webSocket.close();
-                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
+                System.out.println("WARNING!!! " + getUserInfo() + " | " + Utils.getResourcesInfo());
             }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND)) {
@@ -150,7 +154,7 @@ public class ServerApplication extends WebSocketApplication {
             } else {
                 send(((TelepathyWebSocket) webSocket), TelepathyAPI.MESSAGE_ERROR + TelepathyAPI.ERROR_SERVER_OVERLOADED);
                 webSocket.close();
-                System.out.println("WARNING!!! " + Utils.getResourcesInfo());
+                System.out.println("WARNING!!! " + getUserInfo() + " | " + Utils.getResourcesInfo());
             }
 
         } else if (message.startsWith(TelepathyAPI.MESSAGE_BIND_ACCEPTED)) {
