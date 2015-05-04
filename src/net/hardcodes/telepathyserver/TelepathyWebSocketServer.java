@@ -67,9 +67,9 @@ public class TelepathyWebSocketServer {
         webSocketAddOn.setTimeoutInSeconds(15);
 
         if (secure) {
-            System.out.println("Starting TLS secured service...");
             server.getListener("grizzly").setSSLEngineConfig(createSslConfiguration());
             server.getListener("grizzly").setSecure(true);
+            System.out.println("Starting " + server.getListener("grizzly").getSslEngineConfig().getEnabledProtocols()[0] + " secured service...");
         } else {
             System.out.println("Starting unencrypted service. Restart with '--secure' parameter to enable TLS...");
         }
@@ -131,6 +131,9 @@ public class TelepathyWebSocketServer {
         SSLEngineConfigurator sslEngineConfigurator = new SSLEngineConfigurator(sslContextConfig.createSSLContext(),
                 false, false, false);
         sslEngineConfigurator.setClientMode(false);
+        //sslEngineConfigurator.setWantClientAuth(true);
+        //sslEngineConfigurator.setNeedClientAuth(true);
+        sslEngineConfigurator.setEnabledProtocols(new String[] { "TLSv1.2" });
         return sslEngineConfigurator;
     }
 }
