@@ -44,7 +44,6 @@ import org.glassfish.grizzly.http.server.HttpServer;
 import org.glassfish.grizzly.ssl.SSLContextConfigurator;
 import org.glassfish.grizzly.ssl.SSLEngineConfigurator;
 import org.glassfish.grizzly.websockets.WebSocketAddOn;
-import org.glassfish.grizzly.websockets.WebSocketApplication;
 import org.glassfish.grizzly.websockets.WebSocketEngine;
 import sun.misc.IOUtils;
 
@@ -57,7 +56,7 @@ public class TelepathyWebSocketServer {
     public static final int PORT = 8021;
 
     public static void main(String[] args) throws Exception {
-        boolean secure = false;
+        boolean secure = true;
         if (args != null && args.length > 0) {
             secure = args[0].equals("--secure");
         }
@@ -114,14 +113,14 @@ public class TelepathyWebSocketServer {
 
         // Set key store
         ClassLoader classLoader = TelepathyWebSocketServer.class.getClassLoader();
-        InputStream inputStream = classLoader.getResourceAsStream("resources/hardcodes.jks");
+        InputStream inputStream = classLoader.getResourceAsStream("resources/telepathy.hardcodes.net.jks");
         try {
             sslContextConfig.setKeyStoreBytes(IOUtils.readFully(inputStream, -1, true));
         } catch (IOException e) {
             System.out.println("Error reading keyStore file...");
             return null;
         }
-        sslContextConfig.setKeyPass("C927F8D7624213BF8128B434DE471F1EA8F0EB7DD4AD82364689E7CFA759422E");
+        sslContextConfig.setKeyPass("1ECEC069B552F3737F416E7B3E77C7D5A59DBDE8E194F7C0CEC82ED498DA49CF");
         if (!sslContextConfig.validateConfiguration()) {
             System.out.println("TLS config is broken...");
             return null;
