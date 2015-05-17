@@ -46,7 +46,8 @@ import org.glassfish.grizzly.websockets.*;
 
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.concurrent.*;
 
 public class ServerApplication extends WebSocketApplication {
 
@@ -60,8 +61,26 @@ public class ServerApplication extends WebSocketApplication {
     // Initialize optimized broadcaster for system-wide messages.
     private final Broadcaster broadcaster = new OptimizedBroadcaster();
 
+    private ScheduledExecutorService scheduler;
+    private Runnable pingPongRunnable;
+
     public ServerApplication() {
         userProfiles = Utils.loadUserProfiles();
+        scheduler = Executors.newScheduledThreadPool(1, new ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable r) {
+                return new Thread();
+            }
+        });
+        pingPongRunnable = new Runnable() {
+            @Override
+            public void run() {
+                for (Map.Entry<String, WebSocket> webSocketEntry: activeUsers.entrySet()) {
+                    webSocketEntry.getValue().sendPing(TelepathyAPI.MESSAGE_HEARTBEAT.getBytes());
+                }
+            }
+        };
+        scheduler.scheduleAtFixedRate(pingPongRunnable, 0, 10, TimeUnit.SECONDS);
     }
 
     public String getUserInfo() {
