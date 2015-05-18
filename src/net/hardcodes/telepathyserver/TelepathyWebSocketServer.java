@@ -94,8 +94,8 @@ public class TelepathyWebSocketServer {
                 System.out.println(serverApplication.getUserInfo() + " | " + Utils.getResourcesInfo());
                 System.out.println();
             }
-
         } finally {
+            serverApplication.stopPinger();
             Utils.stopSystemMonitor();
             server.shutdownNow();
         }

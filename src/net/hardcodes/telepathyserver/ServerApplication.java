@@ -66,21 +66,27 @@ public class ServerApplication extends WebSocketApplication {
 
     public ServerApplication() {
         userProfiles = Utils.loadUserProfiles();
-        scheduler = Executors.newScheduledThreadPool(1, new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread();
-            }
-        });
+        startPinger();
+    }
+
+    private void startPinger() {
+        logToTerminal("START PINGER");
+        scheduler = Executors.newScheduledThreadPool(1);
         pingPongRunnable = new Runnable() {
             @Override
             public void run() {
                 for (Map.Entry<String, WebSocket> webSocketEntry: activeUsers.entrySet()) {
                     webSocketEntry.getValue().sendPing(TelepathyAPI.MESSAGE_HEARTBEAT.getBytes());
+                    //logToTerminal("SEND PING (" + ((TelepathyWebSocket) webSocketEntry.getValue()).getUID() + ") -> " + TelepathyAPI.MESSAGE_HEARTBEAT);
                 }
             }
         };
         scheduler.scheduleAtFixedRate(pingPongRunnable, 0, 10, TimeUnit.SECONDS);
+    }
+
+    public void stopPinger() {
+        logToTerminal("STOP PINGER");
+        scheduler.shutdownNow();
     }
 
     public String getUserInfo() {
@@ -338,6 +344,12 @@ public class ServerApplication extends WebSocketApplication {
     public void onPing(WebSocket socket, byte[] bytes) {
         logToTerminal("PING (" + ((TelepathyWebSocket) socket).getUID() + ") -> " + bytes.toString());
         super.onPing(socket, bytes);
+    }
+
+    @Override
+    public void onPong(WebSocket socket, byte[] bytes) {
+        logToTerminal("PONG (" + ((TelepathyWebSocket) socket).getUID() + ") -> " + bytes.toString());
+        super.onPong(socket, bytes);
     }
 
     /**
